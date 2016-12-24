@@ -17,7 +17,7 @@ public class Contact
     private String id;
     private String displayName;
     private String phoneNumber;
-    private List<SmsMessage> conversation; // TODO: Add basic methods for adding n stuff
+    private List<SmsMessage> conversation;
 
     public Contact(String id, String displayName, String phoneNumber)
     {
@@ -72,5 +72,10 @@ public class Contact
     public void setConversation(List<SmsMessage> conversation)
     {
         this.conversation = conversation;
+    }
+
+    public void addToConversation(SmsMessage smsMessage)
+    {
+        this.conversation.add(smsMessage);
     }
 }

@@ -6,7 +6,6 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.provider.ContactsContract;
 import android.provider.Telephony;
-import android.util.Log;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
@@ -14,9 +13,7 @@ import com.google.i18n.phonenumbers.PhoneNumberUtil;
 
 import java.lang.reflect.Type;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
+import java.util.Hashtable;
 import java.util.Locale;
 import java.util.Map;
 
@@ -38,7 +35,7 @@ import java.util.Map;
  */
 
 
-public class ContactListBuilder
+public class Util
 {
     private static final Uri CONTACT_URI = ContactsContract.Contacts.CONTENT_URI;
     private static final Uri CONTACT_PHONE_URI = ContactsContract.CommonDataKinds.Phone.CONTENT_URI;
@@ -59,24 +56,13 @@ public class ContactListBuilder
             Telephony.TextBasedSmsColumns.TYPE
     };
 
-    // TODO: Move this to a xml file that the user can set
-    private static final int CONVERSATION_LENGTH_MAX = 100;
-
-    public static List<Contact> buildContactList(Context context)
-    {
-        ContentResolver contentResolver = context.getContentResolver();
-
-        List<Contact> contactList = getContacts(contentResolver);
-        populateConversations(contentResolver, contactList);
-
-        return contactList;
-    }
-
-    private static List<Contact> getContacts(ContentResolver contentResolver)
+    public static Map<String, Contact> buildContactHash(Context context)
     {
         /** Gets the list of all contacts with mobile phone numbers **/
 
-        List<Contact> contactList = new ArrayList<>();
+        ContentResolver contentResolver = context.getContentResolver();
+        Map<String, Contact> contactHash = new Hashtable<>();
+
         Cursor contactCursor = contentResolver.query(
                 CONTACT_URI,
                 CONTACT_PROJECTION,
@@ -84,8 +70,6 @@ public class ContactListBuilder
                 null,
                 CONTACT_ORDER_KEY
         );
-
-        Log.d("getContacts()", String.valueOf(contactCursor.getCount()));
 
         if (contactCursor.moveToFirst())
         {
@@ -125,7 +109,9 @@ public class ContactListBuilder
 
                     phone = formatPhoneNumber(phone);
 
-                    contactList.add(new Contact(id, displayName, phone));
+                    contactHash.put(
+                            id, new Contact(id, displayName, phone, new ArrayList<SmsMessage>()));
+
                     phoneCursor.close();
                 }
 
@@ -134,125 +120,10 @@ public class ContactListBuilder
         }
 
         contactCursor.close();
-        return contactList;
+        return contactHash;
     }
 
-    private static void populateConversations(ContentResolver contentResolver, List<Contact> contactList)
-    {
-        // First get all sms ever sent and received
-        // TODO: ignore drafts
-        Cursor smsCursor = contentResolver.query(
-                SMS_URI,
-                SMS_PROJECTION,
-                null,
-                null,
-                null
-        );
-
-        Log.d("populate", "About to call build all");
-
-        // Now convert to list of smsMessage objects
-        List<SmsMessage> allSms = buildAllSms(contactList, smsCursor);
-        smsCursor.close();
-        smsCursor = null;
-
-        // Group sms messages by related contact id
-        Map<String, List<SmsMessage>> allSmsGrouped = new HashMap<>();
-        for (SmsMessage smsMessage : allSms)
-        {
-            String relatedContactId = smsMessage.getRelatedContactId();
-            if (allSmsGrouped.containsKey(relatedContactId))
-            {
-                if (allSmsGrouped.get(relatedContactId).size() <= CONVERSATION_LENGTH_MAX)
-                {
-                    allSmsGrouped.get(relatedContactId).add(smsMessage);
-                }
-            }
-            else
-            {
-                allSmsGrouped.put(relatedContactId, new ArrayList<>(Arrays.asList(smsMessage)));
-            }
-        }
-
-        allSms = null;
-
-        Log.d("populate", String.valueOf(allSmsGrouped.size()));
-
-        // TODO: make ContactList a dictionary
-        // finally assign conversations to there association contact
-
-        for (Contact contact : contactList)
-        {
-            if (allSmsGrouped.containsKey(contact.getId()))
-                contact.setConversation(allSmsGrouped.get(contact.getId()));
-            else
-                contact.setConversation(new ArrayList<SmsMessage>());
-        }
-
-        // for sms messages without a known contact - could do this in one line with java 8
-        List<String> unknownContactIds = new ArrayList<>();
-
-        for (String contactId : allSmsGrouped.keySet())
-        {
-            boolean unknown = false;
-            for (Contact contact : contactList)
-            {
-                if (contactId.equals(contact.getId()))
-                {
-                    unknown = true;
-                    break;
-                }
-            }
-
-            if (! unknown)
-                unknownContactIds.add(contactId);
-        }
-
-        for (String contactId : unknownContactIds)
-        {
-            contactList.add(new Contact(
-                    contactId,
-                    contactId,
-                    contactId,
-                    allSmsGrouped.get(contactId)
-            ));
-        }
-    }
-
-    private static List<SmsMessage> buildAllSms(List<Contact> contactList, Cursor smsCursor)
-    {
-        /** Convert sms result set into a list of SmsMessage objects **/
-
-        List<SmsMessage> allSms = new ArrayList<>();
-
-        Log.d("buildAllSms", "here");
-
-        while (smsCursor.moveToNext())
-        {
-            String phoneNumber = smsCursor.getString(smsCursor.getColumnIndex(Telephony.Sms.ADDRESS));
-            phoneNumber = formatPhoneNumber(phoneNumber);
-            String relatedContactId = getContactByPhoneNumber(contactList, phoneNumber);
-
-            SmsMessage.SMS_MESSAGE_TYPE smsMessageType;
-            if (smsCursor.getString(smsCursor.getColumnIndex(Telephony.Sms.TYPE)).equals(String.valueOf(Telephony.Sms.MESSAGE_TYPE_INBOX)))
-                smsMessageType = SmsMessage.SMS_MESSAGE_TYPE.INBOX;
-            else
-                smsMessageType = SmsMessage.SMS_MESSAGE_TYPE.OUTBOX;
-
-            allSms.add(new SmsMessage(
-                    smsCursor.getString(smsCursor.getColumnIndex(Telephony.Sms.DATE)),
-                    smsCursor.getString(smsCursor.getColumnIndex(Telephony.Sms.BODY)),
-                    relatedContactId,
-                    smsMessageType
-            ));
-        }
-
-        return allSms;
-    }
-
-    // TODO: maybe these dont belong here
-
-    public static String getContactByPhoneNumber(List<Contact> contactList, String phoneNumber)
+    public static String getContactByPhoneNumber(Map<String, Contact> contactHash, String phoneNumber)
     {
         /* This could use PhoneLookup, but this is probably faster and definitely simpler given
             we already have the contact list
@@ -260,7 +131,7 @@ public class ContactListBuilder
 
         String relatedContactId = "";
 
-        for (Contact contact : contactList)
+        for (Contact contact : contactHash.values())
         {
             if (contact.getPhoneNumber().equals(phoneNumber))
             {
@@ -276,9 +147,9 @@ public class ContactListBuilder
     }
 
 
-    public static String jsonifyContactList(List<Contact> contactList)
+    public static String jsonifyContactHash(Map<String, Contact> contactList)
     {
-        Type type = new TypeToken<List<Contact>>() {}.getType();
+        Type type = new TypeToken<Map<String,Contact>>() {}.getType();
         return new Gson().toJson(contactList, type);
     }
 
@@ -309,6 +180,17 @@ public class ContactListBuilder
         }
 
         return parsedPhoneNumber;
+
+    }
+
+    public static void addNewContact(String contactId, Map<String, Contact> contactHash)
+    {
+        /* For sms to/from numbers not in contact hash */
+
+        contactHash.put(
+                contactId,
+                new Contact(contactId, contactId, contactId, new ArrayList<SmsMessage>())
+        );
 
     }
 }

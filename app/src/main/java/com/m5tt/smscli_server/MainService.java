@@ -20,12 +20,11 @@ import java.io.IOException;
 import java.lang.reflect.Type;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.Collections;
-import java.util.List;
+import java.util.Map;
 
 public class MainService extends IntentService
 {
-    private List<Contact> contactList;
+    private Map<String, Contact> contactHash;
     private DataInputStream inputStream;
     private DataOutputStream outputStream;
 
@@ -38,7 +37,6 @@ public class MainService extends IntentService
         {
             if (intent.getAction().equals("android.provider.Telephony.SMS_RECEIVED"))
             {
-                Log.d("SmsListener onReceive()", "caught sms");
                 android.telephony.SmsMessage[] receivedMessages = Telephony.Sms.Intents.getMessagesFromIntent(intent);
 
                 // for each message from intent, parse to our own SmsMessage, write to client
@@ -46,11 +44,14 @@ public class MainService extends IntentService
                 {
                     // Look up contact
                     Log.d("smsReceiver", "HEY: " + message.getOriginatingAddress());
-                    String phoneNumber = ContactListBuilder.formatPhoneNumber(message.getOriginatingAddress());
-                    String relatedContactId = ContactListBuilder.getContactByPhoneNumber(contactList, phoneNumber);
+                    String phoneNumber = Util.formatPhoneNumber(message.getOriginatingAddress());
+                    String relatedContactId = Util.getContactByPhoneNumber(contactHash, phoneNumber);
+
+                    if (! contactHash.containsKey(relatedContactId))
+                        Util.addNewContact(relatedContactId, contactHash);
 
                     // Build a SmsMessage and jsonify it
-                    String smsMessageJson = ContactListBuilder.jsonifySmsMessage(new SmsMessage(
+                    String smsMessageJson = Util.jsonifySmsMessage(new SmsMessage(
                             String.valueOf(message.getTimestampMillis()),
                             message.getMessageBody(),
                             relatedContactId,
@@ -80,15 +81,9 @@ public class MainService extends IntentService
     @Override
     protected void onHandleIntent(Intent intent)
     {
-        Log.d("here", "getting contact list");
+        contactHash = Util.buildContactHash(this);
 
-        // will be added to by different threads so this should make it okay...
-        List<Contact> tempContactList = ContactListBuilder.buildContactList(this);
-        contactList = Collections.synchronizedList(tempContactList);  // this is the context
-
-        Log.d("fuck", contactList.toString());
-
-        Log.d("onHandleIntent()", String.valueOf(ContactListBuilder.jsonifyContactList(contactList).getBytes().length));
+        Log.d("onHandleIntent()", String.valueOf(Util.jsonifyContactHash(contactHash).getBytes().length));
         Log.d("onHandleIntent()", "Service started");
 
         startServer();
@@ -100,61 +95,58 @@ public class MainService extends IntentService
 
     private void startServer()
     {
-        try
+        // objects for broadcast receiver
+        IntentFilter filter = new IntentFilter();
+        filter.addAction("android.provider.Telephony.SMS_RECEIVED");
+
+        while (true)
         {
-            ServerSocket serverSocket = new ServerSocket(PORT);
-            Socket clientSocket = serverSocket.accept();
+            try
+            {
+                ServerSocket serverSocket = new ServerSocket(PORT);
+                Socket clientSocket = serverSocket.accept();
 
-            Log.d("startSever", "Woo connected");
+                Log.d("startSever", "Connected");
 
-            inputStream = new DataInputStream(clientSocket.getInputStream());
-            outputStream = new DataOutputStream(clientSocket.getOutputStream());
+                inputStream = new DataInputStream(clientSocket.getInputStream());
+                outputStream = new DataOutputStream(clientSocket.getOutputStream());
 
-            // Initial data transfer: send jsonified contact list
-            initialDataTransfer();
+                // Initial data transfer: send jsonified contact list
+                initialDataTransfer();
 
-            // register our sms broadcast receiver on a separate thread
-            IntentFilter filter = new IntentFilter();
-            filter.addAction("android.provider.Telephony.SMS_RECEIVED");
+                // register our sms broadcast receiver on a separate thread
+                HandlerThread handlerThread = new HandlerThread("SmsReceiver");
+                handlerThread.start();
+                registerReceiver(smsReceiver, filter, null, new Handler(handlerThread.getLooper()));
 
-            HandlerThread handlerThread = new HandlerThread("SmsReceiver");
-            handlerThread.start();
-
-            registerReceiver(smsReceiver, filter, null, new Handler(handlerThread.getLooper()));
-
-            // start client reading
-            readClient();
-
-        }
-        catch (IOException e)
-        {
-            Log.d("startServer", "Oh what the fuck: ", e);
+                // start client reading
+                readClient();
+            }
+            catch (IOException e)
+            {
+                Log.d("startServer", "Oh what the fuck: ");
+            }
         }
     }
 
     private void initialDataTransfer() throws IOException
     {
-        //TODO: fix this
-        Log.d("initialDataTransfer()", "Started initial data data transfer");
-        String contactListJson = ContactListBuilder.jsonifyContactList(contactList);
+        String contactHashJson = Util.jsonifyContactHash(contactHash);
+        Log.d("inital", contactHashJson);
 
+        // initial data transfer
         // first write byte size so client knows how much to read
-        outputStream.writeInt(contactListJson.getBytes().length);
+        outputStream.writeInt(contactHashJson.getBytes().length);
 
         /* now write json string, important we do it this way
          * instead of just writeUTF because it uses modified utf 8
          * which python cant handle
          */
-        outputStream.write(contactListJson.getBytes("UTF-8"));
+        outputStream.write(contactHashJson.getBytes("UTF-8"));
     }
-
 
     private void readClient()
     {
-        /** Our main thread loop **/
-
-        Log.d("clientListener", "client reading started");
-
         try
         {
             while (true)
@@ -163,25 +155,26 @@ public class MainService extends IntentService
                 byte[] data = new byte[size];
                 inputStream.readFully(data);
 
-                // TODO: make a JSONHelper class
                 Type type = new TypeToken<SmsMessage>() {}.getType();
                 SmsMessage smsMessage = new Gson().fromJson(new String(data, "UTF-8"), type);
 
-                Log.d("readClient() loop", smsMessage.getBody());
+                if (! contactHash.containsKey(smsMessage.getRelatedContactId()))
+                    Util.addNewContact(smsMessage.getRelatedContactId(), contactHash);
+
+                Contact contact = contactHash.get(smsMessage.getRelatedContactId());
 
                 SmsManager.getDefault().sendTextMessage(
-                        smsMessage.getRelatedContactId(),
+                        contact.getPhoneNumber(),
                         null,
                         smsMessage.getBody(),
                         null,
                         null
                 );
-
-                // add to data structure
             }
         }
         catch (IOException e)
         {
+            return;
         }
     }
 }
