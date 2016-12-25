@@ -1,5 +1,7 @@
 package com.m5tt.smscli_server;
 
+import android.util.Log;
+
 import java.sql.Time;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -44,8 +46,19 @@ public class SmsMessage implements Comparable<SmsMessage>
         {
             this.time = new Time(new SimpleDateFormat("hh:mm:ss").parse(time).getTime());
         }
-        catch (ParseException e) {}
+        catch (ParseException e)
+        {
+            Log.d("SmsMessage()", "This shouldnt be happening");
+        }
 
+        this.body = body;
+        this.relatedContactId = relatedContactId;
+        this.smsMessageType = smsMessageType;
+    }
+
+    public SmsMessage (long time, String body, String relatedContactId, SMS_MESSAGE_TYPE smsMessageType)
+    {
+        this.time = new Time(time);
         this.body = body;
         this.relatedContactId = relatedContactId;
         this.smsMessageType = smsMessageType;
@@ -96,15 +109,29 @@ public class SmsMessage implements Comparable<SmsMessage>
         return this.getTime().compareTo(o.getTime());
     }
 
-    /*
-    public static Date parseTimeStamp(String date)
+    @Override
+    public boolean equals(Object o)
     {
-        // parse sms DATE into a full time
-        Long time = Long.parseLong(date);
-        Calendar calendar = Calendar.getInstance();
-        calendar.setTimeInMillis(time);
-        return calendar.getTime();
-    }
-    */
+        if (o == null) return false;
+        if (this == o) return true;
+        if (!(o instanceof SmsMessage)) return false;
 
+        SmsMessage that = (SmsMessage) o;
+
+        if (!time.equals(that.time)) return false;
+        if (!body.equals(that.body)) return false;
+        if (!relatedContactId.equals(that.relatedContactId)) return false;
+        return smsMessageType == that.smsMessageType;
+
+    }
+
+    @Override
+    public int hashCode()
+    {
+        int result = time.hashCode();
+        result = 31 * result + body.hashCode();
+        result = 31 * result + relatedContactId.hashCode();
+        result = 31 * result + (smsMessageType != null ? smsMessageType.hashCode() : 0);
+        return result;
+    }
 }

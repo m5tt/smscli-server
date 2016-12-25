@@ -5,7 +5,6 @@ import android.content.Context;
 import android.database.Cursor;
 import android.net.Uri;
 import android.provider.ContactsContract;
-import android.provider.Telephony;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
@@ -46,15 +45,6 @@ public class Util
     };
     private static final String CONTACT_ORDER_KEY = ContactsContract.Contacts.DISPLAY_NAME;
     private static final String[] CONTACT_PHONE_PROJECTION = { ContactsContract.CommonDataKinds.Phone.NUMBER };
-
-    private static final Uri SMS_URI = Telephony.Sms.CONTENT_URI;
-    private static final String[] SMS_PROJECTION = {
-            Telephony.TextBasedSmsColumns.ADDRESS,
-            Telephony.TextBasedSmsColumns.PERSON,
-            Telephony.TextBasedSmsColumns.DATE,
-            Telephony.TextBasedSmsColumns.BODY,
-            Telephony.TextBasedSmsColumns.TYPE
-    };
 
     public static Map<String, Contact> buildContactHash(Context context)
     {

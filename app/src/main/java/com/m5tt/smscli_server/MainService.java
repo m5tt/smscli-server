@@ -2,9 +2,12 @@ package com.m5tt.smscli_server;
 
 import android.app.IntentService;
 import android.content.BroadcastReceiver;
+import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.database.ContentObserver;
+import android.database.Cursor;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.provider.Telephony;
@@ -22,11 +25,15 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.Map;
 
+import static com.m5tt.smscli_server.Util.getContactByPhoneNumber;
+
 public class MainService extends IntentService
 {
     private Map<String, Contact> contactHash;
     private DataInputStream inputStream;
     private DataOutputStream outputStream;
+    private HandlerThread handlerThreadReceiver;
+    private HandlerThread handlerThreadObserver;
 
     // TODO: Move to xml config so user can set
     private static final int PORT = 55900;
@@ -45,18 +52,20 @@ public class MainService extends IntentService
                     // Look up contact
                     Log.d("smsReceiver", "HEY: " + message.getOriginatingAddress());
                     String phoneNumber = Util.formatPhoneNumber(message.getOriginatingAddress());
-                    String relatedContactId = Util.getContactByPhoneNumber(contactHash, phoneNumber);
+                    String relatedContactId = getContactByPhoneNumber(contactHash, phoneNumber);
 
                     if (! contactHash.containsKey(relatedContactId))
                         Util.addNewContact(relatedContactId, contactHash);
 
                     // Build a SmsMessage and jsonify it
-                    String smsMessageJson = Util.jsonifySmsMessage(new SmsMessage(
-                            String.valueOf(message.getTimestampMillis()),
+                    SmsMessage smsMessage = new SmsMessage(
+                            message.getTimestampMillis(),
                             message.getMessageBody(),
                             relatedContactId,
                             SmsMessage.SMS_MESSAGE_TYPE.INBOX
-                    ));
+                    );
+
+                    String smsMessageJson = Util.jsonifySmsMessage(smsMessage);
 
                     try
                     {
@@ -67,11 +76,88 @@ public class MainService extends IntentService
                     catch (IOException e)
                     {
                     }
+
+                    contactHash.get(relatedContactId).addToConversation(smsMessage);
                 }
             }
         }
     };
 
+    class SentSmsObserver extends ContentObserver
+    {
+        private final String[] SMS_PROJECTION = {
+                Telephony.TextBasedSmsColumns.ADDRESS,
+                Telephony.TextBasedSmsColumns.PERSON,
+                Telephony.TextBasedSmsColumns.DATE,
+                Telephony.TextBasedSmsColumns.BODY,
+                Telephony.TextBasedSmsColumns.TYPE
+        };
+
+        private final String SENT_SMS_TYPE = "2";
+        private ContentResolver resolver;
+        private SmsMessage prevSmsMessage;
+
+        public SentSmsObserver(Handler handler, ContentResolver resolver)
+        {
+            super(handler);
+            Log.d("Constructor", "hey");
+            this.resolver = resolver;
+        }
+
+        @Override
+        public boolean deliverSelfNotifications()
+        {
+            return true;
+        }
+
+        @Override
+        public void onChange(boolean selfChange)
+        {
+            super.onChange(selfChange);
+            Cursor cursor = this.resolver.query(
+                    Telephony.Sms.Sent.CONTENT_URI,
+                    this.SMS_PROJECTION,
+                    null,
+                    null,
+                    null
+            );
+            cursor.moveToNext();
+
+            if (cursor.moveToNext() && cursor.getString(cursor.getColumnIndex(Telephony.Sms.TYPE)).equals(SENT_SMS_TYPE))
+            {
+                String address = Util.formatPhoneNumber(
+                        cursor.getString(cursor.getColumnIndex(Telephony.Sms.ADDRESS)));
+                String relatedContactId = Util.getContactByPhoneNumber(contactHash, address);
+
+                SmsMessage smsMessage = new SmsMessage(
+                        cursor.getLong(cursor.getColumnIndex(Telephony.Sms.DATE)),
+                        cursor.getString(cursor.getColumnIndex(Telephony.Sms.BODY)),
+                        relatedContactId,
+                        SmsMessage.SMS_MESSAGE_TYPE.OUTBOX
+                );
+
+                if (this.prevSmsMessage == null || ! smsMessage.equals(this.prevSmsMessage))
+                {
+
+                    String smsMessageJson = Util.jsonifySmsMessage(smsMessage);
+
+                    try
+                    {
+                        outputStream.writeInt(smsMessageJson.getBytes().length);
+                        outputStream.write(smsMessageJson.getBytes("UTF-8"));
+                    } catch (IOException e)
+                    {
+                    }
+
+                    this.prevSmsMessage = smsMessage;
+                }
+
+                contactHash.get(relatedContactId).addToConversation(smsMessage);
+            }
+
+            cursor.close();
+        }
+    }
 
     public MainService()
     {
@@ -99,6 +185,8 @@ public class MainService extends IntentService
         IntentFilter filter = new IntentFilter();
         filter.addAction("android.provider.Telephony.SMS_RECEIVED");
 
+        ContentObserver sentSmsObserver = null;
+
         while (true)
         {
             try
@@ -114,17 +202,29 @@ public class MainService extends IntentService
                 // Initial data transfer: send jsonified contact list
                 initialDataTransfer();
 
-                // register our sms broadcast receiver on a separate thread
-                HandlerThread handlerThread = new HandlerThread("SmsReceiver");
-                handlerThread.start();
-                registerReceiver(smsReceiver, filter, null, new Handler(handlerThread.getLooper()));
+                // register sms broadcast receiver on a separate thread
+                handlerThreadReceiver = new HandlerThread("SmsReceiver");
+                handlerThreadReceiver.start();
+                registerReceiver(smsReceiver, filter, null, new Handler(handlerThreadReceiver.getLooper()));
+
+                // register sms ContentObserver on seperate thread
+                handlerThreadObserver = new HandlerThread("SentSmsObserver");
+                handlerThreadObserver.start();
+                sentSmsObserver = new SentSmsObserver(
+                        new Handler(handlerThreadObserver.getLooper()), this.getContentResolver());
+                this.getContentResolver().registerContentObserver(
+                        Telephony.Sms.CONTENT_URI, true, sentSmsObserver
+                );
 
                 // start client reading
                 readClient();
             }
             catch (IOException e)
             {
-                Log.d("startServer", "Oh what the fuck: ");
+                Log.d("startServer", "Oh what the fuck");
+                unregisterReceiver(smsReceiver);
+                if (sentSmsObserver != null)
+                    this.getContentResolver().unregisterContentObserver(sentSmsObserver);
             }
         }
     }
@@ -132,7 +232,6 @@ public class MainService extends IntentService
     private void initialDataTransfer() throws IOException
     {
         String contactHashJson = Util.jsonifyContactHash(contactHash);
-        Log.d("inital", contactHashJson);
 
         // initial data transfer
         // first write byte size so client knows how much to read
@@ -149,7 +248,7 @@ public class MainService extends IntentService
     {
         try
         {
-            while (true)
+            while (! Thread.currentThread().isInterrupted())
             {
                 int size = inputStream.readInt();
                 byte[] data = new byte[size];
