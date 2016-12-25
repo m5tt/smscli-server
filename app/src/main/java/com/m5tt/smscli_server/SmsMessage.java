@@ -1,7 +1,11 @@
 package com.m5tt.smscli_server;
 
-import android.util.Log;
+import com.google.gson.JsonDeserializationContext;
+import com.google.gson.JsonDeserializer;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonParseException;
 
+import java.lang.reflect.Type;
 import java.sql.Time;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -32,6 +36,26 @@ public class SmsMessage implements Comparable<SmsMessage>
     private String relatedContactId;
     private SMS_MESSAGE_TYPE smsMessageType;
 
+    public static JsonDeserializer<Time> timeJsonDeserializer = new JsonDeserializer<Time>()
+    {
+        @Override
+        public Time deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext context) throws JsonParseException
+        {
+            try
+            {
+                return new Time(new SimpleDateFormat("hh:mm:ss").parse(json.getAsString()).getTime());
+            }
+            catch (ParseException e)
+            {
+            }
+
+            throw new JsonParseException("Unparseable time: \"" + json.getAsString()
+                    + "\". Supported formats: " + "hh:mm:ss");
+        }
+    };
+
+
+    /*
     public SmsMessage (Time time, String body, String relatedContactId, SMS_MESSAGE_TYPE smsMessageType)
     {
         this.time = time;
@@ -39,6 +63,7 @@ public class SmsMessage implements Comparable<SmsMessage>
         this.relatedContactId = relatedContactId;
         this.smsMessageType = smsMessageType;
     }
+    */
 
     public SmsMessage (String time, String body, String relatedContactId, SMS_MESSAGE_TYPE smsMessageType)
     {
@@ -48,7 +73,6 @@ public class SmsMessage implements Comparable<SmsMessage>
         }
         catch (ParseException e)
         {
-            Log.d("SmsMessage()", "This shouldnt be happening");
         }
 
         this.body = body;
@@ -58,7 +82,15 @@ public class SmsMessage implements Comparable<SmsMessage>
 
     public SmsMessage (long time, String body, String relatedContactId, SMS_MESSAGE_TYPE smsMessageType)
     {
-        this.time = new Time(time);
+        try
+        {
+            this.time = new Time(time);
+            this.time = new Time(new SimpleDateFormat("hh:mm:ss").parse(this.time.toString()).getTime());
+        }
+        catch (ParseException e)
+        {
+        }
+
         this.body = body;
         this.relatedContactId = relatedContactId;
         this.smsMessageType = smsMessageType;
@@ -112,7 +144,6 @@ public class SmsMessage implements Comparable<SmsMessage>
     @Override
     public boolean equals(Object o)
     {
-        if (o == null) return false;
         if (this == o) return true;
         if (!(o instanceof SmsMessage)) return false;
 
@@ -134,4 +165,5 @@ public class SmsMessage implements Comparable<SmsMessage>
         result = 31 * result + (smsMessageType != null ? smsMessageType.hashCode() : 0);
         return result;
     }
+
 }

@@ -15,6 +15,7 @@ import android.telephony.SmsManager;
 import android.util.Log;
 
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 
 import java.io.DataInputStream;
@@ -23,6 +24,7 @@ import java.io.IOException;
 import java.lang.reflect.Type;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.sql.Time;
 import java.util.Map;
 
 import static com.m5tt.smscli_server.Util.getContactByPhoneNumber;
@@ -50,7 +52,6 @@ public class MainService extends IntentService
                 for (android.telephony.SmsMessage message : receivedMessages)
                 {
                     // Look up contact
-                    Log.d("smsReceiver", "HEY: " + message.getOriginatingAddress());
                     String phoneNumber = Util.formatPhoneNumber(message.getOriginatingAddress());
                     String relatedContactId = getContactByPhoneNumber(contactHash, phoneNumber);
 
@@ -65,18 +66,8 @@ public class MainService extends IntentService
                             SmsMessage.SMS_MESSAGE_TYPE.INBOX
                     );
 
-                    String smsMessageJson = Util.jsonifySmsMessage(smsMessage);
 
-                    try
-                    {
-                        // Now write the json to the client
-                        outputStream.writeInt(smsMessageJson.getBytes().length);
-                        outputStream.write(smsMessageJson.getBytes("UTF-8"));
-                    }
-                    catch (IOException e)
-                    {
-                    }
-
+                    writeServer(Util.jsonifySmsMessage(smsMessage));
                     contactHash.get(relatedContactId).addToConversation(smsMessage);
                 }
             }
@@ -100,7 +91,6 @@ public class MainService extends IntentService
         public SentSmsObserver(Handler handler, ContentResolver resolver)
         {
             super(handler);
-            Log.d("Constructor", "hey");
             this.resolver = resolver;
         }
 
@@ -121,7 +111,6 @@ public class MainService extends IntentService
                     null,
                     null
             );
-            cursor.moveToNext();
 
             if (cursor.moveToNext() && cursor.getString(cursor.getColumnIndex(Telephony.Sms.TYPE)).equals(SENT_SMS_TYPE))
             {
@@ -138,21 +127,19 @@ public class MainService extends IntentService
 
                 if (this.prevSmsMessage == null || ! smsMessage.equals(this.prevSmsMessage))
                 {
+                    if (! contactHash.containsKey(relatedContactId))
+                        Util.addNewContact(relatedContactId, contactHash);
 
-                    String smsMessageJson = Util.jsonifySmsMessage(smsMessage);
-
-                    try
+                    boolean clientSent = contactHash
+                            .get(smsMessage.getRelatedContactId())
+                            .getConversation().contains(smsMessage);
+                    if (clientSent)
                     {
-                        outputStream.writeInt(smsMessageJson.getBytes().length);
-                        outputStream.write(smsMessageJson.getBytes("UTF-8"));
-                    } catch (IOException e)
-                    {
+                        writeServer(Util.jsonifySmsMessage(smsMessage));
+                        contactHash.get(relatedContactId).addToConversation(smsMessage);
+                        this.prevSmsMessage = smsMessage;
                     }
-
-                    this.prevSmsMessage = smsMessage;
                 }
-
-                contactHash.get(relatedContactId).addToConversation(smsMessage);
             }
 
             cursor.close();
@@ -169,7 +156,6 @@ public class MainService extends IntentService
     {
         contactHash = Util.buildContactHash(this);
 
-        Log.d("onHandleIntent()", String.valueOf(Util.jsonifyContactHash(contactHash).getBytes().length));
         Log.d("onHandleIntent()", "Service started");
 
         startServer();
@@ -200,7 +186,7 @@ public class MainService extends IntentService
                 outputStream = new DataOutputStream(clientSocket.getOutputStream());
 
                 // Initial data transfer: send jsonified contact list
-                initialDataTransfer();
+                writeServer(Util.jsonifyContactHash(contactHash));
 
                 // register sms broadcast receiver on a separate thread
                 handlerThreadReceiver = new HandlerThread("SmsReceiver");
@@ -229,21 +215,6 @@ public class MainService extends IntentService
         }
     }
 
-    private void initialDataTransfer() throws IOException
-    {
-        String contactHashJson = Util.jsonifyContactHash(contactHash);
-
-        // initial data transfer
-        // first write byte size so client knows how much to read
-        outputStream.writeInt(contactHashJson.getBytes().length);
-
-        /* now write json string, important we do it this way
-         * instead of just writeUTF because it uses modified utf 8
-         * which python cant handle
-         */
-        outputStream.write(contactHashJson.getBytes("UTF-8"));
-    }
-
     private void readClient()
     {
         try
@@ -254,8 +225,10 @@ public class MainService extends IntentService
                 byte[] data = new byte[size];
                 inputStream.readFully(data);
 
+                Gson gson = new GsonBuilder()
+                        .registerTypeAdapter(Time.class, SmsMessage.timeJsonDeserializer).create();
                 Type type = new TypeToken<SmsMessage>() {}.getType();
-                SmsMessage smsMessage = new Gson().fromJson(new String(data, "UTF-8"), type);
+                SmsMessage smsMessage = gson.fromJson(new String(data, "UTF-8"), type);
 
                 if (! contactHash.containsKey(smsMessage.getRelatedContactId()))
                     Util.addNewContact(smsMessage.getRelatedContactId(), contactHash);
@@ -269,6 +242,8 @@ public class MainService extends IntentService
                         null,
                         null
                 );
+
+                contact.addToConversation(smsMessage);
             }
         }
         catch (IOException e)
@@ -276,4 +251,25 @@ public class MainService extends IntentService
             return;
         }
     }
+
+
+    public synchronized void writeServer(String message)
+    {
+        /* Make this synchronized cause ContentObserver and
+         * BroadCastReceiver could happen at the same time
+         */
+
+        try
+        {
+            // Now write the json to the client
+            outputStream.writeInt(message.getBytes().length);
+            outputStream.write(message.getBytes("UTF-8"));
+            outputStream.flush();
+        }
+        catch (IOException e)
+        {
+            Log.d("im an asshole", e.toString());
+        }
+    }
+
 }
