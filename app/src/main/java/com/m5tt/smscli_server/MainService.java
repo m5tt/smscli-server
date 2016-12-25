@@ -100,6 +100,25 @@ public class MainService extends IntentService
             return true;
         }
 
+        private boolean smsInList(String contactId, SmsMessage sms)
+        {
+            /* Check if sms is in list already. Use this instead
+             * of contains and equals() because we want to exclude
+             * time property. sms time in system database is never
+             * going to be the same as time in our contact hash
+             *
+             * Consequence of this is, multiple messages with same body,
+             * wont be sent over
+             */
+
+            for (SmsMessage curSms : contactHash.get(contactId).getConversation())
+                if (curSms.getBody().equals(sms.getBody())
+                    && curSms.getRelatedContactId().equals(sms.getRelatedContactId())
+                    && curSms.getSmsMessageType().equals(sms.getSmsMessageType()))
+                    return true;
+
+            return false;
+        }
         @Override
         public void onChange(boolean selfChange)
         {
@@ -130,10 +149,7 @@ public class MainService extends IntentService
                     if (! contactHash.containsKey(relatedContactId))
                         Util.addNewContact(relatedContactId, contactHash);
 
-                    boolean clientSent = contactHash
-                            .get(smsMessage.getRelatedContactId())
-                            .getConversation().contains(smsMessage);
-                    if (clientSent)
+                    if (! smsInList(smsMessage.getRelatedContactId(), smsMessage))
                     {
                         writeServer(Util.jsonifySmsMessage(smsMessage));
                         contactHash.get(relatedContactId).addToConversation(smsMessage);
@@ -193,7 +209,7 @@ public class MainService extends IntentService
                 handlerThreadReceiver.start();
                 registerReceiver(smsReceiver, filter, null, new Handler(handlerThreadReceiver.getLooper()));
 
-                // register sms ContentObserver on seperate thread
+                // register sms ContentObserver on separate thread
                 handlerThreadObserver = new HandlerThread("SentSmsObserver");
                 handlerThreadObserver.start();
                 sentSmsObserver = new SentSmsObserver(

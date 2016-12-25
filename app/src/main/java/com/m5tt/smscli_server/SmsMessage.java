@@ -149,9 +149,10 @@ public class SmsMessage implements Comparable<SmsMessage>
 
         SmsMessage that = (SmsMessage) o;
 
-        if (!time.equals(that.time)) return false;
-        if (!body.equals(that.body)) return false;
-        if (!relatedContactId.equals(that.relatedContactId)) return false;
+        if (time != null ? !time.equals(that.time) : that.time != null) return false;
+        if (body != null ? !body.equals(that.body) : that.body != null) return false;
+        if (relatedContactId != null ? !relatedContactId.equals(that.relatedContactId) : that.relatedContactId != null)
+            return false;
         return smsMessageType == that.smsMessageType;
 
     }
@@ -159,11 +160,10 @@ public class SmsMessage implements Comparable<SmsMessage>
     @Override
     public int hashCode()
     {
-        int result = time.hashCode();
-        result = 31 * result + body.hashCode();
-        result = 31 * result + relatedContactId.hashCode();
+        int result = time != null ? time.hashCode() : 0;
+        result = 31 * result + (body != null ? body.hashCode() : 0);
+        result = 31 * result + (relatedContactId != null ? relatedContactId.hashCode() : 0);
         result = 31 * result + (smsMessageType != null ? smsMessageType.hashCode() : 0);
         return result;
     }
-
 }
