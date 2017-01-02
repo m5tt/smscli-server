@@ -11,6 +11,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.database.ContentObserver;
 import android.database.Cursor;
+import android.os.Binder;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
@@ -29,6 +30,7 @@ import java.io.IOException;
 import java.lang.reflect.Type;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketException;
 import java.sql.Time;
 import java.util.Map;
 
@@ -45,6 +47,14 @@ public class MainService extends Service
     private DataOutputStream outputStream;
     private HandlerThread handlerThreadReceiver;
     private HandlerThread handlerThreadObserver;
+
+    private Thread mainThread;
+    private ServerSocket serverSocket;
+    private Socket clientSocket;
+    private final IBinder binder = new LocalBinder();
+
+    private String status;
+    private boolean running;
 
     private BroadcastReceiver smsReceiver = new BroadcastReceiver() {
         @Override
@@ -78,6 +88,14 @@ public class MainService extends Service
             }
         }
     };
+
+    class LocalBinder extends Binder
+    {
+        MainService getService()
+        {
+            return MainService.this;
+        }
+    }
 
     class SentSmsObserver extends ContentObserver
     {
@@ -168,34 +186,50 @@ public class MainService extends Service
         }
     }
 
+    ContentObserver sentSmsObserver = null;
+
     @Override
     public void onCreate()
     {
         super.onCreate();
-        startForeground(ONGOING_NOTIFICATION_ID, buildNotification("Starting"));
+        this.running = false;
     }
 
     public int onStartCommand(Intent intent, int flags, int startId)
     {
         Log.d("onHandleIntent()", "Service started");
+        startForeground(ONGOING_NOTIFICATION_ID, buildNotification("Starting"));
 
-        Thread mainThread = new Thread() {
+        this.running = true;
+        mainThread = new Thread() {
             public void run()
             {
-                startServer();
+                runServer();
             }
         };
-
         mainThread.start();
         return Service.START_NOT_STICKY;
     }
 
     public IBinder onBind(Intent intent)
     {
-        return null;
+        return binder;
     }
 
-    public Notification buildNotification(String status)
+    @Override
+    public void onDestroy()
+    {
+        super.onDestroy();
+        this.running = false;
+
+        //updateStatus("Not running");
+        //updateNotification("Not running");
+
+        closeDown();
+        //stopForeground();
+    }
+
+    private Notification buildNotification(String status)
     {
         PendingIntent contentIntent = PendingIntent.getActivity(
                 this, 0, new Intent(this, MainActivity.class), 0);
@@ -208,7 +242,7 @@ public class MainService extends Service
                 .build();
     }
 
-    public void updateNotification(String status)
+    private void updateNotification(String status)
     {
         Notification notification = buildNotification(status);
         NotificationManager notificationManager  =
@@ -217,8 +251,9 @@ public class MainService extends Service
         notificationManager.notify(ONGOING_NOTIFICATION_ID, notification);
     }
 
-    public void updateStatus(String status)
+    private void updateStatus(String status)
     {
+        this.status = status;
         updateNotification(status);
 
         Intent statusIntent = new Intent("status-message");
@@ -226,24 +261,21 @@ public class MainService extends Service
         LocalBroadcastManager.getInstance(this).sendBroadcast(statusIntent);
     }
 
-    private void startServer()
+    private void runServer()
     {
         IntentFilter smsFilter = new IntentFilter();
         IntentFilter networkFilter = new IntentFilter();
         smsFilter.addAction("android.provider.Telephony.SMS_RECEIVED");
         networkFilter.addAction("android.net.conn.CONNECTIVITY_CHANGE");
 
-        ContentObserver sentSmsObserver = null;
-        ServerSocket serverSocket = null;
-
-        while (true)
+        while (running)
         {
             try
             {
                 serverSocket = new ServerSocket(PORT);
                 Log.d("startSever", "Blocking");
                 updateStatus("Waiting for connection");   // TODO: put strings in layout
-                Socket clientSocket = serverSocket.accept();
+                clientSocket = serverSocket.accept();
 
                 contactHash = Util.buildContactHash(this);
 
@@ -269,30 +301,55 @@ public class MainService extends Service
                 writeClient(Util.jsonifyContactHash(contactHash));
                 readClient();
             }
+            catch (SocketException e)
+            {
+                Log.d("runServer", "Socket  closed");
+            }
             catch (IOException e)
             {
-                Log.d("startServer", "Lost connection");
+                Log.d("runServer", "Lost connection");
                 updateStatus("Lost connection");
             }
             finally
             {
-                try
-                {
-                    unregisterReceiver(smsReceiver);
-                    this.getContentResolver().unregisterContentObserver(sentSmsObserver);
-                    serverSocket.close();
-                }
-                catch (IOException e)
-                {
-                    Log.d("startServer", String.valueOf(e.getStackTrace()));
-                }
+                closeDown();
             }
+        }
+    }
+
+    private void closeDown()
+    {
+        try
+        {
+            if (smsReceiver != null)
+                this.unregisterReceiver(smsReceiver);
+        }
+        catch (IllegalArgumentException e)
+        {
+        }
+
+        try
+        {
+            if (sentSmsObserver != null)
+                this.getContentResolver().unregisterContentObserver(sentSmsObserver);
+        }
+        catch (IllegalArgumentException e)
+        {
+        }
+
+        try
+        {
+            if (serverSocket != null)
+                serverSocket.close();
+        }
+        catch (IOException e)
+        {
         }
     }
 
     private void readClient() throws IOException
     {
-        while (! Thread.currentThread().isInterrupted())
+        while (running)
         {
             int size = inputStream.readInt();
             byte[] data = new byte[size];
@@ -341,4 +398,13 @@ public class MainService extends Service
         }
     }
 
+    public String getStatus()
+    {
+        return this.status;
+    }
+
+    public boolean isRunning()
+    {
+        return this.running;
+    }
 }
