@@ -15,6 +15,7 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
 import android.provider.Telephony;
+import android.support.v4.content.LocalBroadcastManager;
 import android.telephony.SmsManager;
 import android.util.Log;
 
@@ -216,6 +217,15 @@ public class MainService extends Service
         notificationManager.notify(ONGOING_NOTIFICATION_ID, notification);
     }
 
+    public void updateStatus(String status)
+    {
+        updateNotification(status);
+
+        Intent statusIntent = new Intent("status-message");
+        statusIntent.putExtra("status", status);
+        LocalBroadcastManager.getInstance(this).sendBroadcast(statusIntent);
+    }
+
     private void startServer()
     {
         IntentFilter smsFilter = new IntentFilter();
@@ -232,13 +242,13 @@ public class MainService extends Service
             {
                 serverSocket = new ServerSocket(PORT);
                 Log.d("startSever", "Blocking");
-                updateNotification("Waiting for connection");   // TODO: put strings in layout
+                updateStatus("Waiting for connection");   // TODO: put strings in layout
                 Socket clientSocket = serverSocket.accept();
 
                 contactHash = Util.buildContactHash(this);
 
                 Log.d("startSever", "Connected");
-                updateNotification("Connected");
+                updateStatus("Connected");
 
                 inputStream = new DataInputStream(clientSocket.getInputStream());
                 outputStream = new DataOutputStream(clientSocket.getOutputStream());
@@ -262,7 +272,7 @@ public class MainService extends Service
             catch (IOException e)
             {
                 Log.d("startServer", "Lost connection");
-                updateNotification("Lost connection");
+                updateStatus("Lost connection");
             }
             finally
             {
