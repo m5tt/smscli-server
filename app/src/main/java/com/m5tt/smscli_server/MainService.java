@@ -1,6 +1,9 @@
 package com.m5tt.smscli_server;
 
-import android.app.IntentService;
+import android.app.Notification;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.app.Service;
 import android.content.BroadcastReceiver;
 import android.content.ContentResolver;
 import android.content.Context;
@@ -10,6 +13,7 @@ import android.database.ContentObserver;
 import android.database.Cursor;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.IBinder;
 import android.provider.Telephony;
 import android.telephony.SmsManager;
 import android.util.Log;
@@ -29,16 +33,17 @@ import java.util.Map;
 
 import static com.m5tt.smscli_server.Util.getContactByPhoneNumber;
 
-public class MainService extends IntentService
+public class MainService extends Service
 {
+    // TODO: Move to xml config so user can set
+    private static final int PORT = 55900;
+    private static final int ONGOING_NOTIFICATION_ID = 1;
+
     private Map<String, Contact> contactHash;
     private DataInputStream inputStream;
     private DataOutputStream outputStream;
     private HandlerThread handlerThreadReceiver;
     private HandlerThread handlerThreadObserver;
-
-    // TODO: Move to xml config so user can set
-    private static final int PORT = 55900;
 
     private BroadcastReceiver smsReceiver = new BroadcastReceiver() {
         @Override
@@ -66,9 +71,8 @@ public class MainService extends IntentService
                             SmsMessage.SMS_MESSAGE_TYPE.INBOX
                     );
 
-
-                    writeServer(Util.jsonifySmsMessage(smsMessage));
                     contactHash.get(relatedContactId).addToConversation(smsMessage);
+                    writeClient(Util.jsonifySmsMessage(smsMessage));
                 }
             }
         }
@@ -151,9 +155,10 @@ public class MainService extends IntentService
 
                     if (! smsInList(smsMessage.getRelatedContactId(), smsMessage))
                     {
-                        writeServer(Util.jsonifySmsMessage(smsMessage));
                         contactHash.get(relatedContactId).addToConversation(smsMessage);
                         this.prevSmsMessage = smsMessage;
+
+                        writeClient(Util.jsonifySmsMessage(smsMessage));
                     }
                 }
             }
@@ -162,54 +167,87 @@ public class MainService extends IntentService
         }
     }
 
-    public MainService()
+    @Override
+    public void onCreate()
     {
-        super("Main Service");
+        super.onCreate();
+        startForeground(ONGOING_NOTIFICATION_ID, buildNotification("Starting"));
     }
 
-    @Override
-    protected void onHandleIntent(Intent intent)
+    public int onStartCommand(Intent intent, int flags, int startId)
     {
-        contactHash = Util.buildContactHash(this);
-
         Log.d("onHandleIntent()", "Service started");
 
-        startServer();
+        Thread mainThread = new Thread() {
+            public void run()
+            {
+                startServer();
+            }
+        };
 
-        Log.d("onHandleIntent", "Returning");
+        mainThread.start();
+        return Service.START_NOT_STICKY;
+    }
 
-        unregisterReceiver(smsReceiver);
+    public IBinder onBind(Intent intent)
+    {
+        return null;
+    }
+
+    public Notification buildNotification(String status)
+    {
+        PendingIntent contentIntent = PendingIntent.getActivity(
+                this, 0, new Intent(this, MainActivity.class), 0);
+
+        return new Notification.Builder(this)
+                .setContentTitle("Title")
+                .setContentText(status)
+                .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+                .setContentIntent(contentIntent)
+                .build();
+    }
+
+    public void updateNotification(String status)
+    {
+        Notification notification = buildNotification(status);
+        NotificationManager notificationManager  =
+                (NotificationManager) this.getSystemService(Context.NOTIFICATION_SERVICE);
+
+        notificationManager.notify(ONGOING_NOTIFICATION_ID, notification);
     }
 
     private void startServer()
     {
-        // objects for broadcast receiver
-        IntentFilter filter = new IntentFilter();
-        filter.addAction("android.provider.Telephony.SMS_RECEIVED");
+        IntentFilter smsFilter = new IntentFilter();
+        IntentFilter networkFilter = new IntentFilter();
+        smsFilter.addAction("android.provider.Telephony.SMS_RECEIVED");
+        networkFilter.addAction("android.net.conn.CONNECTIVITY_CHANGE");
 
         ContentObserver sentSmsObserver = null;
+        ServerSocket serverSocket = null;
 
         while (true)
         {
             try
             {
-                ServerSocket serverSocket = new ServerSocket(PORT);
+                serverSocket = new ServerSocket(PORT);
+                Log.d("startSever", "Blocking");
+                updateNotification("Waiting for connection");   // TODO: put strings in layout
                 Socket clientSocket = serverSocket.accept();
 
+                contactHash = Util.buildContactHash(this);
+
                 Log.d("startSever", "Connected");
+                updateNotification("Connected");
 
                 inputStream = new DataInputStream(clientSocket.getInputStream());
                 outputStream = new DataOutputStream(clientSocket.getOutputStream());
 
-                // Initial data transfer: send jsonified contact list
-                writeServer(Util.jsonifyContactHash(contactHash));
-
-                // register sms broadcast receiver on a separate thread
                 handlerThreadReceiver = new HandlerThread("SmsReceiver");
                 handlerThreadReceiver.start();
-                registerReceiver(smsReceiver, filter, null, new Handler(handlerThreadReceiver.getLooper()));
+                this.registerReceiver(smsReceiver,
+                        smsFilter, null, new Handler(handlerThreadReceiver.getLooper()));
 
-                // register sms ContentObserver on separate thread
                 handlerThreadObserver = new HandlerThread("SentSmsObserver");
                 handlerThreadObserver.start();
                 sentSmsObserver = new SentSmsObserver(
@@ -218,58 +256,62 @@ public class MainService extends IntentService
                         Telephony.Sms.CONTENT_URI, true, sentSmsObserver
                 );
 
-                // start client reading
+                writeClient(Util.jsonifyContactHash(contactHash));
                 readClient();
             }
             catch (IOException e)
             {
-                Log.d("startServer", "Oh what the fuck");
-                unregisterReceiver(smsReceiver);
-                if (sentSmsObserver != null)
-                    this.getContentResolver().unregisterContentObserver(sentSmsObserver);
+                Log.d("startServer", "Lost connection");
+                updateNotification("Lost connection");
             }
-        }
-    }
-
-    private void readClient()
-    {
-        try
-        {
-            while (! Thread.currentThread().isInterrupted())
+            finally
             {
-                int size = inputStream.readInt();
-                byte[] data = new byte[size];
-                inputStream.readFully(data);
-
-                Gson gson = new GsonBuilder()
-                        .registerTypeAdapter(Time.class, SmsMessage.timeJsonDeserializer).create();
-                Type type = new TypeToken<SmsMessage>() {}.getType();
-                SmsMessage smsMessage = gson.fromJson(new String(data, "UTF-8"), type);
-
-                if (! contactHash.containsKey(smsMessage.getRelatedContactId()))
-                    Util.addNewContact(smsMessage.getRelatedContactId(), contactHash);
-
-                Contact contact = contactHash.get(smsMessage.getRelatedContactId());
-
-                SmsManager.getDefault().sendTextMessage(
-                        contact.getPhoneNumber(),
-                        null,
-                        smsMessage.getBody(),
-                        null,
-                        null
-                );
-
-                contact.addToConversation(smsMessage);
+                try
+                {
+                    unregisterReceiver(smsReceiver);
+                    this.getContentResolver().unregisterContentObserver(sentSmsObserver);
+                    serverSocket.close();
+                }
+                catch (IOException e)
+                {
+                    Log.d("startServer", String.valueOf(e.getStackTrace()));
+                }
             }
         }
-        catch (IOException e)
+    }
+
+    private void readClient() throws IOException
+    {
+        while (! Thread.currentThread().isInterrupted())
         {
-            return;
+            int size = inputStream.readInt();
+            byte[] data = new byte[size];
+            inputStream.readFully(data);
+
+            Gson gson = new GsonBuilder()
+                    .registerTypeAdapter(Time.class, SmsMessage.timeJsonDeserializer).create();
+            Type type = new TypeToken<SmsMessage>() {}.getType();
+            SmsMessage smsMessage = gson.fromJson(new String(data, "UTF-8"), type);
+
+            if (! contactHash.containsKey(smsMessage.getRelatedContactId()))
+                Util.addNewContact(smsMessage.getRelatedContactId(), contactHash);
+
+            Contact contact = contactHash.get(smsMessage.getRelatedContactId());
+
+            SmsManager.getDefault().sendTextMessage(
+                    contact.getPhoneNumber(),
+                    null,
+                    smsMessage.getBody(),
+                    null,
+                    null
+            );
+
+            contact.addToConversation(smsMessage);
         }
     }
 
 
-    public synchronized void writeServer(String message)
+    public synchronized void writeClient(String jsonMessage)
     {
         /* Make this synchronized cause ContentObserver and
          * BroadCastReceiver could happen at the same time
@@ -278,13 +320,14 @@ public class MainService extends IntentService
         try
         {
             // Now write the json to the client
-            outputStream.writeInt(message.getBytes().length);
-            outputStream.write(message.getBytes("UTF-8"));
+            outputStream.writeInt(jsonMessage.getBytes().length);
+            outputStream.write(jsonMessage.getBytes("UTF-8"));
             outputStream.flush();
         }
         catch (IOException e)
         {
-            Log.d("im an asshole", e.toString());
+            // not a big deal
+            Log.d("writeClient", "Write failed");
         }
     }
 

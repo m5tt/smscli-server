@@ -12,13 +12,21 @@
     tools:context="com.m5tt.smscli_server.MainActivity">
 
     <Button
-        android:text="Start Server"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="186dp"
-        android:id="@+id/startServerButton"
+        android:id="@+id/toggleServerButton"
         android:layout_alignParentTop="true"
         android:layout_centerHorizontal="true"
         android:elevation="0dp"
         android:onClick="onStartClick"/>
+
+    <TextView
+        android:text="TextView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_centerVertical="true"
+        android:layout_centerHorizontal="true"
+        android:id="@+id/statusTextView"
+        tools:text='""'/>
 </RelativeLayout>

@@ -4,6 +4,8 @@ import android.content.ContentResolver;
 import android.content.Context;
 import android.database.Cursor;
 import android.net.Uri;
+import android.net.wifi.WifiInfo;
+import android.net.wifi.WifiManager;
 import android.provider.ContactsContract;
 
 import com.google.gson.Gson;
@@ -182,5 +184,13 @@ public class Util
                 new Contact(contactId, contactId, contactId, new ArrayList<SmsMessage>())
         );
 
+    }
+
+    public static boolean isNetworkAvailable(Context context)
+    {
+        WifiManager wifiManager = (WifiManager) context.getSystemService(Context.WIFI_SERVICE);
+        WifiInfo wifiInfo = wifiManager.getConnectionInfo();
+
+        return wifiManager.isWifiEnabled() && wifiInfo != null && wifiInfo.getNetworkId() != -1;
     }
 }
