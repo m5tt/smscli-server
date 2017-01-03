@@ -10,9 +10,13 @@ import android.content.pm.PackageManager;
 import android.content.res.Resources;
 import android.os.Bundle;
 import android.os.IBinder;
+import android.preference.PreferenceManager;
 import android.support.annotation.NonNull;
 import android.support.v4.content.LocalBroadcastManager;
 import android.support.v7.app.AppCompatActivity;
+import android.support.v7.widget.Toolbar;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
@@ -67,10 +71,14 @@ public class MainActivity extends AppCompatActivity
     {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        PreferenceManager.setDefaultValues(this, R.xml.preferences, false);
 
-        resources = getResources();
+        Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
+        setSupportActionBar(toolbar);
+        toolbar.showOverflowMenu();
 
-        /* This causes weird flashy crap - maybe need to check if have permission?
+
+        /* TODO: Fix this
         // Request permissions
         ActivityCompat.requestPermissions(
                 this,
@@ -85,6 +93,8 @@ public class MainActivity extends AppCompatActivity
         toggleServerButton = (Button) findViewById(R.id.toggleServerButton);
         statusTextView = (TextView) findViewById(R.id.statusTextView);
         serverRunning = false;
+
+        resources = getResources();
     }
 
     @Override
@@ -94,6 +104,25 @@ public class MainActivity extends AppCompatActivity
 
         this.bindService(new Intent(this, MainService.class), bindingConnection,
                 Context.BIND_AUTO_CREATE);
+    }
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu)
+    {
+        getMenuInflater().inflate(R.menu.options_menu, menu);
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item)
+    {
+        switch (item.getItemId())
+        {
+            case R.id.item_settings:
+                this.startActivity(new Intent(this, SettingsActivity.class));
+            default:    // not recognized
+                return super.onOptionsItemSelected(item);
+        }
     }
 
     public void onStartClick(View view)         // TODO: change name

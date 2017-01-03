@@ -9,6 +9,7 @@ import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.content.res.Resources;
 import android.database.ContentObserver;
 import android.database.Cursor;
@@ -16,6 +17,7 @@ import android.os.Binder;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
+import android.preference.PreferenceManager;
 import android.provider.Telephony;
 import android.support.v4.content.LocalBroadcastManager;
 import android.telephony.SmsManager;
@@ -39,8 +41,6 @@ import static com.m5tt.smscli_server.Util.getContactByPhoneNumber;
 
 public class MainService extends Service
 {
-    // TODO: Move to xml config so user can set
-    private static final int PORT = 55900;
     private static final int ONGOING_NOTIFICATION_ID = 1;
 
     private Map<String, Contact> contactHash;
@@ -57,6 +57,8 @@ public class MainService extends Service
     private String status;
     private boolean running;
     private Resources resources;
+
+    SharedPreferences sharedPreferences;
 
     private BroadcastReceiver smsReceiver = new BroadcastReceiver() {
         @Override
@@ -198,6 +200,8 @@ public class MainService extends Service
 
         this.resources = getResources();
         this.status = resources.getString(R.string.status_init);
+
+        sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
     }
 
     public int onStartCommand(Intent intent, int flags, int startId)
@@ -233,13 +237,16 @@ public class MainService extends Service
 
     private Notification buildNotification(String status)
     {
+        // TODO: fix this so app exits on press
+        // TODO: add stop button
         PendingIntent contentIntent = PendingIntent.getActivity(
-                this, 0, new Intent(this, MainActivity.class), 0);
+                this, 0, new Intent(this, MainActivity.class)
+                        .setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK), 0);
 
         return new Notification.Builder(this)
-                .setContentTitle("Title")
+                .setContentTitle(resources.getString(R.string.app_name))
                 .setContentText(status)
-                .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+                .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)    // TODO: do something about this
                 .setContentIntent(contentIntent)
                 .build();
     }
@@ -270,20 +277,23 @@ public class MainService extends Service
         smsFilter.addAction("android.provider.Telephony.SMS_RECEIVED");
         networkFilter.addAction("android.net.conn.CONNECTIVITY_CHANGE");
 
+        int port = Integer.parseInt(
+                sharedPreferences.getString(SettingsActivity.KEY_PREF_PORT, ""));
+
         while (running)
         {
             try
             {
-                serverSocket = new ServerSocket(PORT);
+                serverSocket = new ServerSocket(port);
                 Log.d("startSever", "Blocking");
                 updateStatus(resources.getString(R.string.status_listen,
-                        Util.getIPAddress(true), String.valueOf(PORT)));
+                        Util.getIPAddress(true), String.valueOf(port)));
 
                 clientSocket = serverSocket.accept();
 
                 Log.d("startSever", "Connected");
                 updateStatus(resources.getString(R.string.status_connected,
-                        clientSocket.getInetAddress(), String.valueOf(PORT)));
+                        clientSocket.getInetAddress(), String.valueOf(port)));
 
                 contactHash = Util.buildContactHash(this);
 
