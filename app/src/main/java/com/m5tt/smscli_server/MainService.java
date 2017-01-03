@@ -9,6 +9,7 @@ import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.res.Resources;
 import android.database.ContentObserver;
 import android.database.Cursor;
 import android.os.Binder;
@@ -55,6 +56,7 @@ public class MainService extends Service
 
     private String status;
     private boolean running;
+    private Resources resources;
 
     private BroadcastReceiver smsReceiver = new BroadcastReceiver() {
         @Override
@@ -193,12 +195,16 @@ public class MainService extends Service
     {
         super.onCreate();
         this.running = false;
+
+        this.resources = getResources();
+        this.status = resources.getString(R.string.status_init);
     }
 
     public int onStartCommand(Intent intent, int flags, int startId)
     {
         Log.d("onHandleIntent()", "Service started");
-        startForeground(ONGOING_NOTIFICATION_ID, buildNotification("Starting"));
+        startForeground(ONGOING_NOTIFICATION_ID, buildNotification(""));
+        updateStatus(resources.getString(R.string.status_starting));
 
         this.running = true;
         mainThread = new Thread() {
@@ -222,11 +228,7 @@ public class MainService extends Service
         super.onDestroy();
         this.running = false;
 
-        //updateStatus("Not running");
-        //updateNotification("Not running");
-
         closeDown();
-        //stopForeground();
     }
 
     private Notification buildNotification(String status)
@@ -274,13 +276,16 @@ public class MainService extends Service
             {
                 serverSocket = new ServerSocket(PORT);
                 Log.d("startSever", "Blocking");
-                updateStatus("Waiting for connection");   // TODO: put strings in layout
+                updateStatus(resources.getString(R.string.status_listen,
+                        Util.getIPAddress(true), String.valueOf(PORT)));
+
                 clientSocket = serverSocket.accept();
 
-                contactHash = Util.buildContactHash(this);
-
                 Log.d("startSever", "Connected");
-                updateStatus("Connected");
+                updateStatus(resources.getString(R.string.status_connected,
+                        clientSocket.getInetAddress(), String.valueOf(PORT)));
+
+                contactHash = Util.buildContactHash(this);
 
                 inputStream = new DataInputStream(clientSocket.getInputStream());
                 outputStream = new DataOutputStream(clientSocket.getOutputStream());
@@ -308,7 +313,7 @@ public class MainService extends Service
             catch (IOException e)
             {
                 Log.d("runServer", "Lost connection");
-                updateStatus("Lost connection");
+                updateStatus(resources.getString(R.string.status_disconnected));
             }
             finally
             {

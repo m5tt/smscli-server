@@ -1,6 +1,5 @@
 package com.m5tt.smscli_server;
 
-import android.Manifest;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
@@ -8,10 +7,10 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
+import android.content.res.Resources;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.support.annotation.NonNull;
-import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.LocalBroadcastManager;
 import android.support.v7.app.AppCompatActivity;
 import android.view.View;
@@ -22,9 +21,10 @@ public class MainActivity extends AppCompatActivity
 {
     Button toggleServerButton;
     TextView statusTextView;
+    Resources resources;
 
-    private boolean bound = false;
-    private MainService mainService;
+    private boolean bound;
+    private boolean serverRunning;
 
     private ServiceConnection bindingConnection = new ServiceConnection()
     {
@@ -32,13 +32,23 @@ public class MainActivity extends AppCompatActivity
         public void onServiceConnected(ComponentName name, IBinder service)
         {
             MainService.LocalBinder binder = (MainService.LocalBinder) service;
-            mainService = binder.getService();
+            MainService mainService = binder.getService();
+            bound = true;
+
+            // update ui
+            statusTextView.setText(mainService.getStatus());
+            toggleServerButton.setText(mainService.isRunning() ?
+                    resources.getString(R.string.button_title_stop) :
+                    resources.getString(R.string.button_title_start));
+
+            serverRunning = mainService.isRunning();
+
+            unbindService(this);
         }
 
         @Override
         public void onServiceDisconnected(ComponentName name)
         {
-            bound = false;
         }
     };
 
@@ -53,37 +63,28 @@ public class MainActivity extends AppCompatActivity
     };
 
     @Override
-    protected void onStart()
-    {
-        super.onStart();
-
-        this.bindService(new Intent(this, MainService.class), bindingConnection,
-                Context.BIND_AUTO_CREATE);
-
-        bound = true;
-    }
-
-    @Override
     protected void onCreate(Bundle savedInstanceState)
     {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        resources = getResources();
+
+        /* This causes weird flashy crap - maybe need to check if have permission?
         // Request permissions
         ActivityCompat.requestPermissions(
                 this,
                 new String[] { Manifest.permission.SEND_SMS},
                 5
         );
+        */
 
         LocalBroadcastManager.getInstance(this).registerReceiver(
                 statusReceiver, new IntentFilter("status-message"));
 
         toggleServerButton = (Button) findViewById(R.id.toggleServerButton);
-        toggleServerButton.setText("Start Server");
-
         statusTextView = (TextView) findViewById(R.id.statusTextView);
-        statusTextView.setText("Not running");
+        serverRunning = false;
     }
 
     @Override
@@ -91,61 +92,27 @@ public class MainActivity extends AppCompatActivity
     {
         super.onResume();
 
-        if (mainService != null)
-        {
-            String status = mainService.getStatus();
-            if (status != null && ! status.isEmpty())
-                statusTextView.setText(status);
-        }
-
-        boolean startServer = mainService == null || ! mainService.isRunning();
-        toggleServerButton.setText(startServer ? "Start Server" : "Stop Server");
-
-    }
-
-    @Override
-    protected void onStop()
-    {
-        super.onStop();
-
-        if (bound)
-        {
-            unbindService(bindingConnection);
-            bound = false;
-        }
-
+        this.bindService(new Intent(this, MainService.class), bindingConnection,
+                Context.BIND_AUTO_CREATE);
     }
 
     public void onStartClick(View view)         // TODO: change name
     {
         Intent intent = new Intent(this, MainService.class);
-        boolean startServer = mainService == null || ! mainService.isRunning();
 
-        if (startServer)
+        if (! serverRunning)
         {
-            if (! bound)
-            {
-                this.bindService(new Intent(this, MainService.class), bindingConnection,
-                        Context.BIND_AUTO_CREATE);
-                bound = true;
-            }
-
             this.startService(intent);
-            toggleServerButton.setText("Stop Server");
-
+            serverRunning = true;
+            toggleServerButton.setText(resources.getString(R.string.button_title_stop));
         }
         else
         {
             this.stopService(intent);
+            serverRunning = false;
 
-            if (bound)
-            {
-                unbindService(bindingConnection);
-                bound = false;
-            }
-
-            toggleServerButton.setText("Start Server");
-            statusTextView.setText("Not running");
+            toggleServerButton.setText(resources.getString(R.string.button_title_start));
+            statusTextView.setText(resources.getString(R.string.status_stopped));
         }
     }
 

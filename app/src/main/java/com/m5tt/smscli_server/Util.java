@@ -13,8 +13,13 @@ import com.google.gson.reflect.TypeToken;
 import com.google.i18n.phonenumbers.PhoneNumberUtil;
 
 import java.lang.reflect.Type;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.net.SocketException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Hashtable;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -192,5 +197,50 @@ public class Util
         WifiInfo wifiInfo = wifiManager.getConnectionInfo();
 
         return wifiManager.isWifiEnabled() && wifiInfo != null && wifiInfo.getNetworkId() != -1;
+    }
+
+    public static String getIPAddress(boolean useIPv4)
+    {
+        try
+        {
+            List<NetworkInterface> networkInterfaces =
+                    Collections.list(NetworkInterface.getNetworkInterfaces());
+
+            for (NetworkInterface networkInterface : networkInterfaces)
+            {
+                List<InetAddress> inetAddresses =
+                        Collections.list(networkInterface.getInetAddresses());
+
+                for (InetAddress inetAddress : inetAddresses)
+                {
+                    if (! inetAddress.isLoopbackAddress())
+                    {
+                        String addrStr = inetAddress.getHostAddress().toUpperCase();
+                        boolean isIPv4 = addrStr.indexOf(':') < 0;
+
+                        if (useIPv4)
+                        {
+                            if (isIPv4)
+                                return addrStr;
+                        }
+                        else
+                        {
+                            if (!isIPv4)
+                            {
+                                int delim = addrStr.indexOf('%'); // drop zone suffix
+                                return delim < 0 ?
+                                        addrStr.toString() : addrStr.substring(0, delim).toUpperCase();
+                            }
+                        }
+
+                    }
+                }
+            }
+        }
+        catch (SocketException e)
+        {
+        }
+
+        return "";
     }
 }

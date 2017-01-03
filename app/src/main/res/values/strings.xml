@@ -1,3 +1,16 @@
 <resources>
     <string name="app_name">smscli-server</string>
+
+    <!-- Button titles -->
+    <string name="button_title_start">Start Server</string>
+    <string name="button_title_stop">Stop Server</string>
+
+    <!-- Status strings -->
+    <string name="status_init"></string>
+    <string name="status_starting">Starting</string>
+    <string name="status_listen">Listening at %1$s on port %2$s</string>
+    <string name="status_connected">Connected to %1$s on %2$s</string>
+    <string name="status_disconnected">Lost connection</string>
+    <string name="status_stopped">Stopped</string>
+
 </resources>
