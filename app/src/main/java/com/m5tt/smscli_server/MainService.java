@@ -41,6 +41,9 @@ import static com.m5tt.smscli_server.Util.getContactByPhoneNumber;
 
 public class MainService extends Service
 {
+    public static final int MIN_TCP_PORT = 1;
+    public static final int MAX_TCP_PORT = 65535;
+
     private static final int ONGOING_NOTIFICATION_ID = 1;
 
     private Map<String, Contact> contactHash;
