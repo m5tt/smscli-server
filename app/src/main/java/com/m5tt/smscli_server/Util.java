@@ -26,24 +26,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/**************************************************************************************************
- * Main data structure that program centers around
- * Static class to build a contact list:
- *      1) Gets all contacts with mobile numbers
- *      2) Populates the sms conversation the user has for each contact
- *
- * See Contact class for details on contact.
- *
- * We also have a CONVERSATION LENGTH MAX to prevent the whole data structure
- * from getting to big.
- *
- * This list is to be sent over to the client in the form of a JSON string
- *
- * TODO: Change this class name up or something, its used for more then just contactList building
- *
- */
-
-
 public class Util
 {
     private static final Uri CONTACT_URI = ContactsContract.Contacts.CONTENT_URI;

@@ -335,36 +335,6 @@ public class MainService extends Service
         }
     }
 
-    private void closeDown()
-    {
-        try
-        {
-            if (smsReceiver != null)
-                this.unregisterReceiver(smsReceiver);
-        }
-        catch (IllegalArgumentException e)
-        {
-        }
-
-        try
-        {
-            if (sentSmsObserver != null)
-                this.getContentResolver().unregisterContentObserver(sentSmsObserver);
-        }
-        catch (IllegalArgumentException e)
-        {
-        }
-
-        try
-        {
-            if (serverSocket != null)
-                serverSocket.close();
-        }
-        catch (IOException e)
-        {
-        }
-    }
-
     private void readClient() throws IOException
     {
         while (running)
@@ -395,7 +365,6 @@ public class MainService extends Service
         }
     }
 
-
     public synchronized void writeClient(String jsonMessage)
     {
         /* Make this synchronized cause ContentObserver and
@@ -425,4 +394,44 @@ public class MainService extends Service
     {
         return this.running;
     }
+
+    private void closeDown()
+    {
+        try
+        {
+            if (smsReceiver != null)
+                this.unregisterReceiver(smsReceiver);
+        }
+        catch (IllegalArgumentException e)
+        {
+        }
+
+        try
+        {
+            if (sentSmsObserver != null)
+                this.getContentResolver().unregisterContentObserver(sentSmsObserver);
+        }
+        catch (IllegalArgumentException e)
+        {
+        }
+
+        try
+        {
+            if (serverSocket != null)
+                serverSocket.close();
+        }
+        catch (IOException e)
+        {
+        }
+
+        try
+        {
+            if (clientSocket != null)
+                clientSocket.close();
+        }
+        catch (IOException e)
+        {
+        }
+    }
+
 }

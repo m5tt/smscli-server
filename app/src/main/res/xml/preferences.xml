@@ -5,5 +5,5 @@
         android:title="@string/pref_port_title"
         android:summary="@string/pref_port_summary"
         android:inputType="numberSigned"
-        android:defaultValue="55900"/> <!-- TODO: make sure this is a valid port number -->
+        android:defaultValue="55900"/>
 </PreferenceScreen>

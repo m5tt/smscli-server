@@ -24,7 +24,6 @@ import java.util.Date;
  *
  * type can be either be received or sent.
  *
- * TODO: Change type up so sms client can see if a message has failed, pending.., dont do drafs
  */
 
 public class SmsMessage implements Comparable<SmsMessage>

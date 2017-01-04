@@ -18,6 +18,7 @@ import android.support.v4.content.LocalBroadcastManager;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.SwitchCompat;
 import android.support.v7.widget.Toolbar;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.CompoundButton;
@@ -57,11 +58,13 @@ public class MainActivity extends AppCompatActivity
             statusTextView.setText(mainService.getStatus());
 
             unbindService(this);
+            mainService = null;
         }
 
         @Override
         public void onServiceDisconnected(ComponentName name)
         {
+            Log.d("onServiceDisconnected", "Unbinded");
         }
     };
 
