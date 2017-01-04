@@ -14,21 +14,18 @@ import android.preference.PreferenceManager;
 import android.support.annotation.NonNull;
 import android.support.v4.content.LocalBroadcastManager;
 import android.support.v7.app.AppCompatActivity;
+import android.support.v7.widget.SwitchCompat;
 import android.support.v7.widget.Toolbar;
 import android.view.Menu;
 import android.view.MenuItem;
-import android.view.View;
-import android.widget.Button;
+import android.widget.CompoundButton;
 import android.widget.TextView;
 
 public class MainActivity extends AppCompatActivity
 {
-    Button toggleServerButton;
+    SwitchCompat serverSwitch;
     TextView statusTextView;
     Resources resources;
-
-    private boolean bound;
-    private boolean serverRunning;
 
     private ServiceConnection bindingConnection = new ServiceConnection()
     {
@@ -37,15 +34,17 @@ public class MainActivity extends AppCompatActivity
         {
             MainService.LocalBinder binder = (MainService.LocalBinder) service;
             MainService mainService = binder.getService();
-            bound = true;
 
-            // update ui
+            // set state of switch according to switch of server
+            serverSwitch.setChecked(mainService.isRunning());
+
+            // set server switch text
+            serverSwitch.setText(serverSwitch.isChecked() ?
+                    resources.getString(R.string.switch_title_on) :
+                    resources.getString(R.string.switch_title_off));
+
+            // set status
             statusTextView.setText(mainService.getStatus());
-            toggleServerButton.setText(mainService.isRunning() ?
-                    resources.getString(R.string.button_title_stop) :
-                    resources.getString(R.string.button_title_start));
-
-            serverRunning = mainService.isRunning();
 
             unbindService(this);
         }
@@ -87,14 +86,37 @@ public class MainActivity extends AppCompatActivity
         );
         */
 
+        // for receiving status updates from server
         LocalBroadcastManager.getInstance(this).registerReceiver(
                 statusReceiver, new IntentFilter("status-message"));
 
-        toggleServerButton = (Button) findViewById(R.id.toggleServerButton);
+        // set some globals
+        serverSwitch = (SwitchCompat) findViewById(R.id.serverSwitch);
         statusTextView = (TextView) findViewById(R.id.statusTextView);
-        serverRunning = false;
-
         resources = getResources();
+
+        // set handler for serverSwitch - switch is initialized by onResume()
+        serverSwitch.setOnCheckedChangeListener(
+                new SwitchCompat.OnCheckedChangeListener() {
+                    @Override
+                    public void onCheckedChanged(CompoundButton buttonView, boolean isChecked)
+                    {
+                         Intent intent = new Intent(MainActivity.this, MainService.class);
+
+                        if (isChecked)
+                        {
+                            MainActivity.this.startService(intent);
+                            serverSwitch.setText(resources.getString(R.string.switch_title_on));
+                        }
+                        else
+                        {
+                            MainActivity.this.stopService(intent);
+
+                            serverSwitch.setText(resources.getString(R.string.switch_title_off));
+                            statusTextView.setText(resources.getString(R.string.status_stopped));
+                        }
+                    }
+                });
     }
 
     @Override
@@ -102,6 +124,7 @@ public class MainActivity extends AppCompatActivity
     {
         super.onResume();
 
+        // update status in ui
         this.bindService(new Intent(this, MainService.class), bindingConnection,
                 Context.BIND_AUTO_CREATE);
     }
@@ -125,25 +148,6 @@ public class MainActivity extends AppCompatActivity
         }
     }
 
-    public void onStartClick(View view)         // TODO: change name
-    {
-        Intent intent = new Intent(this, MainService.class);
-
-        if (! serverRunning)
-        {
-            this.startService(intent);
-            serverRunning = true;
-            toggleServerButton.setText(resources.getString(R.string.button_title_stop));
-        }
-        else
-        {
-            this.stopService(intent);
-            serverRunning = false;
-
-            toggleServerButton.setText(resources.getString(R.string.button_title_start));
-            statusTextView.setText(resources.getString(R.string.status_stopped));
-        }
-    }
 
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
@@ -155,7 +159,7 @@ public class MainActivity extends AppCompatActivity
         {
             case 5:
                 if (!(grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED))
-                    toggleServerButton.setEnabled(false);
+                    serverSwitch.setEnabled(false);
         }
     }
 

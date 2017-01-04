@@ -1,9 +1,9 @@
 <resources>
     <string name="app_name">smscli-server</string>
 
-    <!-- Button titles -->
-    <string name="button_title_start">Start Server</string>
-    <string name="button_title_stop">Stop Server</string>
+    <!-- Switch titles -->
+    <string name="switch_title_on">Server On</string>
+    <string name="switch_title_off">Server Off</string>
 
     <!-- Status strings -->
     <string name="status_init"></string>

@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <RelativeLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/activity_main"
     android:layout_width="match_parent"
@@ -16,23 +17,24 @@
         android:theme="@style/ThemeOverlay.AppCompat.ActionBar"
         android:layout_width="match_parent"/>
 
-    <Button
-        android:layout_height="wrap_content"
-        android:layout_marginTop="186dp"
-        android:id="@+id/toggleServerButton"
-        android:layout_alignParentTop="true"
-        android:layout_centerHorizontal="true"
-        android:elevation="0dp"
-        android:onClick="onStartClick"
-        android:layout_width="wrap_content"/>
-
     <TextView
-        android:text="TextView"
+        android:id="@+id/statusTextView"
+        android:text=""
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_centerVertical="true"
+        android:layout_centerHorizontal="true"/>
+
+    <android.support.v7.widget.SwitchCompat
+        android:text="@string/switch_title_off"
+        android:id="@+id/serverSwitch"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@+id/toolbar"
         android:layout_centerHorizontal="true"
-        android:id="@+id/statusTextView"
-        tools:text='""'/>
+        android:layout_marginTop="94dp"
+        app:switchPadding="@dimen/switch_padding"
+        android:checked="false"/>
+    <!-- style="@android:style/Widget.CompoundButton.Switch" -->
 
 </RelativeLayout>
