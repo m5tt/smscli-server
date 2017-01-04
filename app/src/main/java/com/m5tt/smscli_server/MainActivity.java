@@ -9,7 +9,6 @@ import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.content.res.Resources;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.preference.PreferenceManager;
@@ -26,7 +25,6 @@ import android.widget.TextView;
 
 public class MainActivity extends AppCompatActivity
 {
-
     private static final int PERMISSION_ALL = 1;
     private static final String[] PERMISSIONS = {
             Manifest.permission.READ_SMS,
@@ -34,7 +32,6 @@ public class MainActivity extends AppCompatActivity
             Manifest.permission.RECEIVE_SMS,
             Manifest.permission.READ_CONTACTS
     };
-
 
     SwitchCompat serverSwitch;
     TextView statusTextView;
@@ -157,18 +154,8 @@ public class MainActivity extends AppCompatActivity
 
     private void requestPermissions()
     {
-        if (! hasPermissions(PERMISSIONS))
+        if (! Util.hasPermissions(this, PERMISSIONS))
             ActivityCompat.requestPermissions(this, PERMISSIONS, PERMISSION_ALL);
-    }
-
-    private boolean hasPermissions(String... permissions)
-    {
-        if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && permissions != null)
-            for (String permission : permissions)
-                if (ActivityCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED)
-                    return false;
-
-        return true;
     }
 
     @Override
