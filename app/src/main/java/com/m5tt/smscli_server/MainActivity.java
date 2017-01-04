@@ -1,5 +1,6 @@
 package com.m5tt.smscli_server;
 
+import android.Manifest;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
@@ -8,10 +9,12 @@ import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.content.res.Resources;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.preference.PreferenceManager;
 import android.support.annotation.NonNull;
+import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.LocalBroadcastManager;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.SwitchCompat;
@@ -23,6 +26,16 @@ import android.widget.TextView;
 
 public class MainActivity extends AppCompatActivity
 {
+
+    private static final int PERMISSION_ALL = 1;
+    private static final String[] PERMISSIONS = {
+            Manifest.permission.READ_SMS,
+            Manifest.permission.SEND_SMS,
+            Manifest.permission.RECEIVE_SMS,
+            Manifest.permission.READ_CONTACTS
+    };
+
+
     SwitchCompat serverSwitch;
     TextView statusTextView;
     Resources resources;
@@ -72,28 +85,19 @@ public class MainActivity extends AppCompatActivity
         setContentView(R.layout.activity_main);
         PreferenceManager.setDefaultValues(this, R.xml.preferences, false);
 
+        // set up toolbar as our app bar
         Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
         toolbar.showOverflowMenu();
-
-
-        /* TODO: Fix this
-        // Request permissions
-        ActivityCompat.requestPermissions(
-                this,
-                new String[] { Manifest.permission.SEND_SMS},
-                5
-        );
-        */
-
-        // for receiving status updates from server
-        LocalBroadcastManager.getInstance(this).registerReceiver(
-                statusReceiver, new IntentFilter("status-message"));
 
         // set some globals
         serverSwitch = (SwitchCompat) findViewById(R.id.serverSwitch);
         statusTextView = (TextView) findViewById(R.id.statusTextView);
         resources = getResources();
+
+        // register our status receiver for status updates
+        LocalBroadcastManager.getInstance(this).registerReceiver(
+                statusReceiver, new IntentFilter("status-message"));
 
         // set handler for serverSwitch - switch is initialized by onResume()
         serverSwitch.setOnCheckedChangeListener(
@@ -117,6 +121,9 @@ public class MainActivity extends AppCompatActivity
                         }
                     }
                 });
+
+        serverSwitch.setEnabled(true);
+        requestPermissions();
     }
 
     @Override
@@ -148,6 +155,21 @@ public class MainActivity extends AppCompatActivity
         }
     }
 
+    private void requestPermissions()
+    {
+        if (! hasPermissions(PERMISSIONS))
+            ActivityCompat.requestPermissions(this, PERMISSIONS, PERMISSION_ALL);
+    }
+
+    private boolean hasPermissions(String... permissions)
+    {
+        if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && permissions != null)
+            for (String permission : permissions)
+                if (ActivityCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED)
+                    return false;
+
+        return true;
+    }
 
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
@@ -157,9 +179,10 @@ public class MainActivity extends AppCompatActivity
 
         switch (requestCode)
         {
-            case 5:
-                if (!(grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED))
+            case PERMISSION_ALL:
+                if (grantResults.length <= 0 || grantResults[0] != PackageManager.PERMISSION_GRANTED)
                     serverSwitch.setEnabled(false);
+                break;
         }
     }
 
