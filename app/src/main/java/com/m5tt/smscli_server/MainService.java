@@ -249,7 +249,7 @@ public class MainService extends Service
         return new Notification.Builder(this)
                 .setContentTitle(resources.getString(R.string.app_name))
                 .setContentText(status)
-                .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)    // TODO: do something about this
+                .setSmallIcon(R.drawable.ic_notify)
                 .setContentIntent(contentIntent)
                 .build();
     }
