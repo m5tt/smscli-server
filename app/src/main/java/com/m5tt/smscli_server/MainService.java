@@ -288,6 +288,8 @@ public class MainService extends Service
             try
             {
                 serverSocket = new ServerSocket(port);
+                contactHash = Util.buildContactHash(this);  // TODO: don't do this (have to fix client)
+
                 Log.d("startSever", "Blocking");
                 updateStatus(resources.getString(R.string.status_listen,
                         Util.getIPAddress(true), String.valueOf(port)));
@@ -298,7 +300,6 @@ public class MainService extends Service
                 updateStatus(resources.getString(R.string.status_connected,
                         clientSocket.getInetAddress(), String.valueOf(port)));
 
-                contactHash = Util.buildContactHash(this);
 
                 inputStream = new DataInputStream(clientSocket.getInputStream());
                 outputStream = new DataOutputStream(clientSocket.getOutputStream());
