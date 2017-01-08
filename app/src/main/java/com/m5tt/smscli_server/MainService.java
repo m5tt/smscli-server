@@ -49,10 +49,7 @@ public class MainService extends Service
     private Map<String, Contact> contactHash;
     private DataInputStream inputStream;
     private DataOutputStream outputStream;
-    private HandlerThread handlerThreadReceiver;
-    private HandlerThread handlerThreadObserver;
 
-    private Thread mainThread;
     private ServerSocket serverSocket;
     private Socket clientSocket;
     private final IBinder binder = new LocalBinder();
@@ -214,7 +211,7 @@ public class MainService extends Service
         updateStatus(resources.getString(R.string.status_starting));
 
         this.running = true;
-        mainThread = new Thread() {
+        Thread mainThread = new Thread() {
             public void run()
             {
                 runServer();
@@ -275,6 +272,9 @@ public class MainService extends Service
 
     private void runServer()
     {
+        HandlerThread handlerThreadReceiver;
+        HandlerThread handlerThreadObserver;
+
         IntentFilter smsFilter = new IntentFilter();
         IntentFilter networkFilter = new IntentFilter();
         smsFilter.addAction("android.provider.Telephony.SMS_RECEIVED");
